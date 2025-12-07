@@ -66,15 +66,15 @@ Hz → 음계(Note) 변환 알고리즘 적용
 
 
 # 📌 용어 설명
-피치(Pitch): 소리의 높낮이를 의미하며 주파수(Hz)에 의해 결정됨
-Hz (Hertz): 1초 동안 발생하는 진동 횟수
-Web Audio API: 웹 브라우저에서 오디오 처리·분석·합성을 수행하는 API
-Node.js: 서버 사이드 JavaScript 환경
-React: UI 구축을 위한 JavaScript 라이브러리
-Wavesurfer.js: 오디오 파형 시각화 라이브러리
-Pitchfinder.js: 오디오 신호에서 피치를 검출하는 알고리즘 제공 라이브러리
-UI/UX: 사용자 인터페이스 및 경험
-MVP: 최소 기능 제품(Minimum Viable Product)
+- 피치(Pitch): 소리의 높낮이를 의미하며 주파수(Hz)에 의해 결정됨
+- Hz (Hertz): 1초 동안 발생하는 진동 횟수
+- Web Audio API: 웹 브라우저에서 오디오 처리·분석·합성을 수행하는 API
+- Node.js: 서버 사이드 JavaScript 환경
+- React: UI 구축을 위한 JavaScript 라이브러리
+- Wavesurfer.js: 오디오 파형 시각화 라이브러리
+- Pitchfinder.js: 오디오 신호에서 피치를 검출하는 알고리즘 제공 라이브러리
+- UI/UX: 사용자 인터페이스 및 경험
+- MVP: 최소 기능 제품(Minimum Viable Product)
 
 ---
 
