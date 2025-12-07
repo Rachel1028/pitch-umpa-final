@@ -3,7 +3,18 @@ import { useLocation } from "wouter";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Pause, SkipBack, SkipForward, Upload as UploadIcon, Music, Trash2, ArrowRight, Download, Loader, FileText } from "lucide-react";
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Upload as UploadIcon,
+  Music,
+  ArrowRight,
+  Download,
+  Loader,
+  FileText,
+} from "lucide-react";
 import WaveSurfer from "wavesurfer.js";
 import { Line } from "react-chartjs-2";
 import {
@@ -19,7 +30,6 @@ import {
 import { useFiles } from "@/contexts/FileContext";
 import { cn } from "@/lib/utils";
 import { downloadHTMLReport } from "@/lib/reportGenerator";
-import { saveToHistory, getHistory, deleteHistoryItem, AnalysisHistory } from "@/lib/historyManager";
 
 ChartJS.register(
   CategoryScale,
@@ -44,20 +54,25 @@ interface AnalysisResult {
 export default function Analyze() {
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurfer = useRef<WaveSurfer | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+
   const [, navigate] = useLocation();
   const { uploadedFiles, selectedFileForAnalysis, setSelectedFileForAnalysis } = useFiles();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /* -----------------------------------
+        W A V E S U R F E R 초기화
+  ------------------------------------ */
   useEffect(() => {
     if (waveformRef.current) {
       wavesurfer.current = WaveSurfer.create({
         container: waveformRef.current,
-        waveColor: 'rgba(168, 85, 247, 0.4)',
-        progressColor: '#a855f7',
-        cursorColor: '#ffffff',
+        waveColor: "rgba(168, 85, 247, 0.4)",
+        progressColor: "#a855f7",
+        cursorColor: "#ffffff",
         barWidth: 2,
         barGap: 3,
         height: 120,
@@ -65,12 +80,12 @@ export default function Analyze() {
       });
     }
 
-    return () => {
-      wavesurfer.current?.destroy();
-    };
+    return () => wavesurfer.current?.destroy();
   }, []);
 
-  // Load selected file into wavesurfer
+  /* -----------------------------------
+          파일 선택 시 로드
+  ------------------------------------ */
   useEffect(() => {
     if (selectedFileForAnalysis && wavesurfer.current) {
       const url = URL.createObjectURL(selectedFileForAnalysis.file);
@@ -80,88 +95,107 @@ export default function Analyze() {
     }
   }, [selectedFileForAnalysis]);
 
+  /* -----------------------------------
+          재생 & 일시정지
+  ------------------------------------ */
   const togglePlay = () => {
-    if (wavesurfer.current) {
-      wavesurfer.current.playPause();
-      setIsPlaying(!isPlaying);
-    }
+    if (!wavesurfer.current) return;
+    wavesurfer.current.playPause();
+    setIsPlaying((p) => !p);
   };
 
+  /* -----------------------------------
+        ⭐ 되감기 / 빨리감기
+        (Wavesurfer v7: setTime())
+  ------------------------------------ */
+  const skipBackward = () => {
+    if (!wavesurfer.current) return;
+    const t = wavesurfer.current.getCurrentTime();
+    wavesurfer.current.setTime(Math.max(0, t - 3));
+  };
+
+  const skipForward = () => {
+    if (!wavesurfer.current) return;
+    const t = wavesurfer.current.getCurrentTime();
+    const d = wavesurfer.current.getDuration();
+    wavesurfer.current.setTime(Math.min(d, t + 3));
+  };
+
+  /* -----------------------------------
+          파일 업로드
+  ------------------------------------ */
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.type.startsWith('audio/')) {
-        const tempFile: any = {
-          id: `${Date.now()}-${Math.random()}`,
-          file,
-          name: file.name,
-          size: file.size,
-          uploadedAt: new Date(),
-        };
-        setSelectedFileForAnalysis(tempFile);
-      }
-    }
+    if (!e.target.files?.[0]) return;
+
+    const file = e.target.files[0];
+    if (!file.type.startsWith("audio/")) return;
+
+    const tempFile = {
+      id: `${Date.now()}-${Math.random()}`,
+      file,
+      name: file.name,
+      size: file.size,
+      uploadedAt: new Date(),
+    };
+
+    setSelectedFileForAnalysis(tempFile);
   };
 
   const handleDragDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('audio/')) {
-        const tempFile: any = {
-          id: `${Date.now()}-${Math.random()}`,
-          file,
-          name: file.name,
-          size: file.size,
-          uploadedAt: new Date(),
-        };
-        setSelectedFileForAnalysis(tempFile);
-      }
-    }
+    if (!e.dataTransfer.files[0]) return;
+
+    const file = e.dataTransfer.files[0];
+    if (!file.type.startsWith("audio/")) return;
+
+    const tempFile = {
+      id: `${Date.now()}-${Math.random()}`,
+      file,
+      name: file.name,
+      size: file.size,
+      uploadedAt: new Date(),
+    };
+
+    setSelectedFileForAnalysis(tempFile);
   };
 
-  /**
-   * 전체 오디오 파일 분석
-   */
+  /* -----------------------------------
+         ⭐ 피치 분석 (ACF)
+  ------------------------------------ */
   const analyzeAudioFile = async () => {
     if (!selectedFileForAnalysis) return;
 
     setIsAnalyzing(true);
+
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+
       const arrayBuffer = await selectedFileForAnalysis.file.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
       const duration = audioBuffer.duration;
       const sampleRate = audioBuffer.sampleRate;
       const channels = audioBuffer.numberOfChannels;
-      const channelData = audioBuffer.getChannelData(0);
 
-      // 전체 파일을 분석하기 위해 hopSize를 동적으로 조정
-      const hopSize = Math.floor(sampleRate * 0.02); // 20ms 홉
+      const channelData = audioBuffer.getChannelData(0);
+      const hopSize = Math.floor(sampleRate * 0.02); // 20ms
       const numFrames = Math.floor(channelData.length / hopSize);
 
       const pitchData: number[] = [];
       const timeLabels: string[] = [];
 
-      // 전체 파일 분석
       for (let i = 0; i < numFrames; i++) {
-        const frameStart = i * hopSize;
-        const frameEnd = Math.min(frameStart + hopSize, channelData.length);
-        const frame = channelData.slice(frameStart, frameEnd);
+        const start = i * hopSize;
+        const frame = channelData.slice(start, start + hopSize);
 
-        // 피치 추정
         const pitch = estimatePitch(frame, sampleRate);
         pitchData.push(pitch);
 
-        // 시간 레이블
-        const timeInSeconds = (i * hopSize) / sampleRate;
-        timeLabels.push(`${timeInSeconds.toFixed(1)}s`);
+        timeLabels.push(`${(start / sampleRate).toFixed(1)}s`);
       }
 
-      // 분석 결과 저장
-      const result: AnalysisResult = {
+      setAnalysisResult({
         fileName: selectedFileForAnalysis.name,
         duration,
         sampleRate,
@@ -169,28 +203,25 @@ export default function Analyze() {
         pitchData,
         timeLabels,
         timestamp: new Date().toISOString(),
-      };
-
-      setAnalysisResult(result);
-    } catch (error) {
-      console.error("분석 오류:", error);
+      });
+    } catch (err) {
       alert("파일 분석 중 오류가 발생했습니다.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  /**
-   * 간단한 피치 추정 (ACF - Auto-Correlation Function)
-   */
+  /* -----------------------------------
+     ACF 기반 피치 추정 함수
+  ------------------------------------ */
   function estimatePitch(frame: Float32Array, sampleRate: number): number {
     const minPitch = 50;
     const maxPitch = 400;
     const minLag = Math.floor(sampleRate / maxPitch);
     const maxLag = Math.floor(sampleRate / minPitch);
 
-    let maxCorr = 0;
     let bestLag = minLag;
+    let maxCorr = 0;
 
     for (let lag = minLag; lag < maxLag; lag++) {
       let corr = 0;
@@ -204,180 +235,117 @@ export default function Analyze() {
     }
 
     const pitch = sampleRate / bestLag;
-    return pitch > 50 && pitch < 400 ? pitch : 0;
+    return pitch >= 50 && pitch <= 400 ? pitch : 0;
   }
 
-  /**
-   * 분석 결과를 JSON 파일로 다운로드
-   */
-  const downloadAnalysisResult = () => {
-    if (!analysisResult) return;
+  /* -----------------------------------
+           통계 · 다운로드 준비
+  ------------------------------------ */
 
-    const dataToDownload = {
-      fileName: analysisResult.fileName,
-      duration: analysisResult.duration,
-      sampleRate: analysisResult.sampleRate,
-      channels: analysisResult.channels,
-      pitchData: analysisResult.pitchData,
-      timeLabels: analysisResult.timeLabels,
-      timestamp: analysisResult.timestamp,
-      averagePitch: (analysisResult.pitchData.reduce((a, b) => a + b, 0) / analysisResult.pitchData.length).toFixed(2),
-      maxPitch: Math.max(...analysisResult.pitchData).toFixed(2),
-      minPitch: Math.min(...analysisResult.pitchData).toFixed(2),
-    };
-
-    const jsonString = JSON.stringify(dataToDownload, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${analysisResult.fileName.replace(/\.[^/.]+$/, "")}_analysis_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  /**
-   * 분석 결과를 CSV 파일로 다운로드
-   */
-  const downloadAnalysisResultCSV = () => {
-    if (!analysisResult) return;
-
-    let csvContent = "시간,피치(Hz)\n";
-    analysisResult.timeLabels.forEach((time, index) => {
-      csvContent += `${time},${analysisResult.pitchData[index].toFixed(2)}\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${analysisResult.fileName.replace(/\.[^/.]+$/, "")}_analysis_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  /**
-   * 분석 결과를 HTML 보고서로 다운로드
-   */
-  const downloadAnalysisResultHTML = () => {
-    if (!analysisResult) return;
-    downloadHTMLReport(analysisResult);
-  };
-
-  // 차트 데이터 생성
-  const chartData = analysisResult ? {
-    labels: analysisResult.timeLabels,
-    datasets: [
-      {
-        label: '피치 (Hz)',
-        data: analysisResult.pitchData,
-        borderColor: '#a855f7',
-        backgroundColor: 'rgba(168, 85, 247, 0.1)',
-        tension: 0.2,
-        pointRadius: 0,
-        borderWidth: 2,
-      },
-    ],
-  } : {
-    labels: [],
-    datasets: [],
-  };
+  const chartData = analysisResult
+    ? {
+        labels: analysisResult.timeLabels,
+        datasets: [
+          {
+            label: "피치 (Hz)",
+            data: analysisResult.pitchData,
+            borderColor: "#a855f7",
+            backgroundColor: "rgba(168, 85, 247, 0.1)",
+            tension: 0.2,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+        ],
+      }
+    : { labels: [], datasets: [] };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: { color: '#ffffff' }
-      },
-      title: {
-        display: false,
-      },
+      legend: { labels: { color: "#ffffff" } },
     },
     scales: {
-      y: {
-        grid: { color: 'rgba(255, 255, 255, 0.1)' },
-        ticks: { color: '#a1a1aa' }
-      },
       x: {
-        grid: { color: 'rgba(255, 255, 255, 0.1)' },
-        ticks: { color: '#a1a1aa' }
-      }
-    }
+        ticks: { color: "#aaa" },
+        grid: { color: "rgba(255,255,255,0.1)" },
+      },
+      y: {
+        ticks: { color: "#aaa" },
+        grid: { color: "rgba(255,255,255,0.1)" },
+      },
+    },
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const formatFileSize = (b: number) => {
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(b) / Math.log(1024));
+    return (b / Math.pow(1024, i)).toFixed(2) + " " + sizes[i];
   };
 
+  /* -----------------------------------
+                UI 렌더링
+  ------------------------------------ */
   return (
     <Layout>
       <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">파일 분석</h1>
-            <p className="text-muted-foreground">오디오 파일의 파형과 피치를 분석합니다.</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold text-white">파일 분석</h1>
+          <p className="text-muted-foreground">오디오 파일의 파형과 피치를 분석합니다.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* File Selection Panel */}
-          <Card className="glass-panel border-white/10 lg:col-span-1 h-fit">
+          {/* -------------------------------
+                좌측: 파일 선택 영역
+          ------------------------------- */}
+          <Card className="glass-panel border-white/10 h-fit">
             <CardHeader>
-              <CardTitle className="text-lg text-white">파일 선택</CardTitle>
+              <CardTitle className="text-white text-lg">파일 선택</CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              {/* Upload Area */}
+
               <div
                 className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
+                onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDragDrop}
                 onClick={() => inputRef.current?.click()}
               >
                 <input
                   ref={inputRef}
                   type="file"
-                  className="hidden"
                   accept="audio/*"
+                  className="hidden"
                   onChange={handleFileUpload}
                 />
+
                 <UploadIcon className="w-8 h-8 text-primary mx-auto mb-2" />
                 <p className="text-xs text-muted-foreground">파일을 드래그하거나 클릭</p>
               </div>
 
-              {/* Uploaded Files List */}
               {uploadedFiles.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">업로드된 파일</p>
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  <p className="text-xs text-muted-foreground uppercase">업로드된 파일</p>
+
+                  <div className="max-h-[400px] overflow-y-auto space-y-2">
                     {uploadedFiles.map((file) => (
                       <button
                         key={file.id}
                         onClick={() => setSelectedFileForAnalysis(file)}
                         className={cn(
-                          "w-full p-3 rounded-lg text-left text-sm transition-all border",
+                          "w-full p-3 rounded-lg text-left text-sm border transition",
                           selectedFileForAnalysis?.id === file.id
                             ? "bg-primary/20 border-primary text-white"
                             : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
                         )}
                       >
                         <div className="flex items-start gap-2">
-                          <Music className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <Music className="w-4 h-4 mt-0.5" />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">{file.name}</p>
-                            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatFileSize(file.size)}
+                            </p>
                           </div>
                         </div>
                       </button>
@@ -388,90 +356,160 @@ export default function Analyze() {
             </CardContent>
           </Card>
 
-          {/* Analysis Panel */}
+          {/* -------------------------------
+                우측: 파형 + 컨트롤 + 분석
+          ------------------------------- */}
           <div className="lg:col-span-2 space-y-6">
             {selectedFileForAnalysis ? (
               <>
-                {/* Waveform */}
                 <Card className="glass-panel border-primary/30 bg-primary/5">
                   <CardHeader>
-                    <CardTitle className="text-lg text-white">{selectedFileForAnalysis.name}</CardTitle>
+                    <CardTitle className="text-lg text-white">
+                      {selectedFileForAnalysis.name}
+                    </CardTitle>
                   </CardHeader>
+
                   <CardContent className="space-y-4">
-                    <div ref={waveformRef} className="w-full bg-black/20 rounded-lg overflow-hidden" />
-                    <div className="flex items-center justify-center gap-4">
-                      <Button size="icon" variant="ghost" className="hover:text-primary"><SkipBack className="w-5 h-5" /></Button>
-                      <Button size="icon" className="rounded-full w-12 h-12 bg-primary hover:bg-primary/90 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]" onClick={togglePlay}>
-                        {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-1" />}
-                      </Button>
-                      <Button size="icon" variant="ghost" className="hover:text-primary"><SkipForward className="w-5 h-5" /></Button>
+                    <div
+                      ref={waveformRef}
+                      className="w-full bg-black/20 rounded-lg overflow-hidden"
+                    />
+
+                    {/* ⭐ 컨트롤 버튼 */}
+                    <div className="flex items-center justify-center gap-6 mt-2">
+                      {/* ⏪ 되감기 */}
+                      <button
+                        onClick={skipBackward}
+                        className="p-3 rounded-full bg-[#1a1a2e] hover:bg-[#292949] transition"
+                      >
+                        <SkipBack className="w-6 h-6 text-purple-400" />
+                      </button>
+
+                      {/* ▶ 재생/정지 */}
+                      <button
+                        onClick={togglePlay}
+                        className="p-4 rounded-full bg-purple-500 hover:bg-purple-600 shadow-lg"
+                      >
+                        {isPlaying ? (
+                          <Pause className="w-7 h-7 text-white" />
+                        ) : (
+                          <Play className="w-7 h-7 text-white ml-1" />
+                        )}
+                      </button>
+
+                      {/* ⏩ 빨리감기 */}
+                      <button
+                        onClick={skipForward}
+                        className="p-3 rounded-full bg-[#1a1a2e] hover:bg-[#292949] transition"
+                      >
+                        <SkipForward className="w-6 h-6 text-purple-400" />
+                      </button>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Pitch Analysis Chart */}
+                {/* ------------------- 분석 결과 ------------------- */}
                 {analysisResult && (
                   <>
-                    <Card className="glass-panel border-white/10" id="pdf-content">
+                    <Card className="glass-panel border-white/10">
                       <CardHeader>
-                        <CardTitle className="text-lg text-white">피치 분석 (Pitch Analysis)</CardTitle>
+                        <CardTitle className="text-lg text-white">
+                          피치 분석 (Pitch Analysis)
+                        </CardTitle>
                       </CardHeader>
+
                       <CardContent>
-                        <div className="space-y-4">
-                          {/* 분석 통계 */}
-                          <div className="grid grid-cols-3 gap-4">
-                            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                              <p className="text-xs text-muted-foreground">평균 피치</p>
-                              <p className="text-lg font-bold text-primary">
-                                {(analysisResult.pitchData.reduce((a, b) => a + b, 0) / analysisResult.pitchData.length).toFixed(1)} Hz
-                              </p>
-                            </div>
-                            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                              <p className="text-xs text-muted-foreground">최대 피치</p>
-                              <p className="text-lg font-bold text-primary">
-                                {Math.max(...analysisResult.pitchData).toFixed(1)} Hz
-                              </p>
-                            </div>
-                            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                              <p className="text-xs text-muted-foreground">최소 피치</p>
-                              <p className="text-lg font-bold text-primary">
-                                {Math.min(...analysisResult.pitchData).toFixed(1)} Hz
-                              </p>
-                            </div>
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                          <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                            <p className="text-xs text-muted-foreground">평균 피치</p>
+                            <p className="text-lg font-bold text-primary">
+                              {(
+                                analysisResult.pitchData.reduce((a, b) => a + b, 0) /
+                                analysisResult.pitchData.length
+                              ).toFixed(1)}
+                              Hz
+                            </p>
                           </div>
 
-                          {/* 그래프 */}
-                          <div className="h-[400px] w-full">
-                            <Line options={chartOptions} data={chartData} />
+                          <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                            <p className="text-xs text-muted-foreground">최대 피치</p>
+                            <p className="text-lg font-bold text-primary">
+                              {Math.max(...analysisResult.pitchData).toFixed(1)} Hz
+                            </p>
                           </div>
+
+                          <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                            <p className="text-xs text-muted-foreground">최소 피치</p>
+                            <p className="text-lg font-bold text-primary">
+                              {Math.min(...analysisResult.pitchData).toFixed(1)} Hz
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="h-[400px]">
+                          <Line data={chartData} options={chartOptions} />
                         </div>
                       </CardContent>
                     </Card>
 
-                    {/* Download Buttons */}
                     <div className="flex gap-3 flex-wrap">
-                      <Button 
-                        size="lg" 
-                        className="bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)] border-0 flex-1 min-w-[100px]"
-                        onClick={downloadAnalysisResult}
+                      <Button
+                        size="lg"
+                        className="flex-1 min-w-[120px] bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
+                        onClick={() => {
+                          const avg =
+                            analysisResult.pitchData.reduce((a, b) => a + b, 0) /
+                            analysisResult.pitchData.length;
+                          const out = {
+                            ...analysisResult,
+                            averagePitch: avg.toFixed(2),
+                          };
+                          const blob = new Blob([JSON.stringify(out, null, 2)], {
+                            type: "application/json",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "analysis.json";
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
                       >
                         <Download className="mr-2 h-5 w-5" />
                         JSON 저장
                       </Button>
-                      <Button 
-                        size="lg" 
+
+                      <Button
+                        size="lg"
                         variant="outline"
-                        className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-sm flex-1 min-w-[100px]"
-                        onClick={downloadAnalysisResultCSV}
+                        className="flex-1 min-w-[120px] border-white/20 bg-white/5 hover:bg-white/10"
+                        onClick={() => {
+                          let csv = "time,pitch\n";
+                          analysisResult.timeLabels.forEach((t, i) => {
+                            csv += `${t},${analysisResult.pitchData[i]}\n`;
+                          });
+                          const blob = new Blob([csv], {
+                            type: "text/csv",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "analysis.csv";
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
                       >
                         <Download className="mr-2 h-5 w-5" />
                         CSV 저장
                       </Button>
-                      <Button 
-                        size="lg" 
+
+                      <Button
+                        size="lg"
                         variant="outline"
-                        className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-sm flex-1 min-w-[100px]"
-                        onClick={downloadAnalysisResultHTML}
+                        className="flex-1 min-w-[120px] border-white/20 bg-white/5 hover:bg-white/10"
+                        onClick={() => {
+                          analysisResult && downloadHTMLReport(analysisResult);
+                        }}
                       >
                         <FileText className="mr-2 h-5 w-5" />
                         보고서 저장
@@ -480,12 +518,11 @@ export default function Analyze() {
                   </>
                 )}
 
-                {/* Analyze Button */}
                 {!analysisResult && (
-                  <Button 
-                    size="lg" 
-                    className="w-full bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)] border-0"
+                  <Button
                     onClick={analyzeAudioFile}
+                    size="lg"
+                    className="w-full bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
                     disabled={isAnalyzing}
                   >
                     {isAnalyzing ? (
@@ -499,11 +536,10 @@ export default function Analyze() {
                   </Button>
                 )}
 
-                {/* Compare Button */}
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="w-full border-white/20 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-sm"
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full border-white/20 bg-white/5 hover:bg-white/10"
                   onClick={() => navigate("/compare")}
                 >
                   <ArrowRight className="mr-2 h-5 w-5" />
@@ -515,8 +551,10 @@ export default function Analyze() {
                 <CardContent className="text-center space-y-4">
                   <Music className="w-16 h-16 text-muted-foreground mx-auto opacity-50" />
                   <div>
-                    <p className="text-lg font-semibold text-muted-foreground">파일을 선택해주세요</p>
-                    <p className="text-sm text-muted-foreground">왼쪽에서 파일을 선택하거나 새로운 파일을 업로드하세요.</p>
+                    <p className="text-lg text-muted-foreground">파일을 선택해주세요</p>
+                    <p className="text-sm text-muted-foreground">
+                      왼쪽에서 파일을 선택하거나 새로운 파일을 업로드하세요.
+                    </p>
                   </div>
                 </CardContent>
               </Card>
