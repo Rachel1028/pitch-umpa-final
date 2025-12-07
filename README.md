@@ -4,8 +4,8 @@ A modern web-based pitch analyzing and visualization tool
 ---
 
 # 실행 방법
-pnpm install
-pnpm dev
+- pnpm install
+- pnpm dev
 
 
 # 📌 프로젝트 소개
