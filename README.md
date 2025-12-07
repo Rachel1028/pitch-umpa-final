@@ -101,8 +101,9 @@ GitHub Issues / Pull Request 협업
 
 ---
 
-# 📁 프로젝트 구조
-<img width="316" height="599" alt="스크린샷 2025-12-06 오후 8 52 27" src="https://github.com/user-attachments/assets/2e534cf7-a178-447d-840e-3b5fd9868b3b" />
+# 📁 프로젝트구조
+<img width="316" height="599" alt="스크린샷 2025-12-06 오후 8 52 27" src="https://github.com/user-attachments/assets/b216d9ea-0e7a-4536-833b-e26d0c1903b2" />
+
 
  ----
 
